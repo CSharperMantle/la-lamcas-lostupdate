@@ -48,96 +48,121 @@
 /* ------------------------------------------------------------------ */
 /* scalar assembly workers                                            */
 /* ------------------------------------------------------------------ */
-__asm__(
-    ".text\n"
+__asm__(".text\n"
 
-    /* uint64_t ticket_burst_amcas(uint64_t *cell, uint64_t per);
-     *
-     * CAS fetch-and-increment; returns the number of successful swaps.
-     */
-    ".globl ticket_burst_amcas\n"
-    ".type  ticket_burst_amcas, @function\n"
-    "ticket_burst_amcas:\n"
-    ".cfi_startproc\n"
-    "	li.d	$t2, 0\n"	 /* expect = 0 (cell starts at 0) */
-    "	li.d	$t4, 0\n"	 /* successes */
-    "1:	addi.d	$t3, $t2, 1\n"	 /* new = expect + 1 */
-    "	move	$t5, $t2\n"	 /* save expect */
-    "	amcas.d	$t2, $t3, $a0\n" /* t2 = old; mem = t3 iff old==exp */
-    "	bne	$t2, $t5, 1b\n"	 /* old != expect -> retry */
-    "	addi.d	$t4, $t4, 1\n"	 /* success */
-    "	move	$t2, $t3\n"	 /* expect = old + 1 */
-    "	addi.d	$a1, $a1, -1\n"
-    "	bnez	$a1, 1b\n"
-    "	move	$a0, $t4\n"
-    "	ret\n"
-    ".cfi_endproc\n"
-    ".size ticket_burst_amcas, .-ticket_burst_amcas\n"
+	/* uint64_t ticket_burst_amcas(uint64_t *cell, uint64_t per);
+	 *
+	 * CAS fetch-and-increment; returns the number of successful swaps.
+	 */
+	".globl ticket_burst_amcas\n"
+	".type  ticket_burst_amcas, @function\n"
+	"ticket_burst_amcas:\n"
+	".cfi_startproc\n"
+	"	li.d	$t2, 0\n"	 /* expect = 0 (cell starts at 0) */
+	"	li.d	$t4, 0\n"	 /* successes */
+	"1:	addi.d	$t3, $t2, 1\n"	 /* new = expect + 1 */
+	"	move	$t5, $t2\n"	 /* save expect */
+	"	amcas.d	$t2, $t3, $a0\n" /* t2 = old; mem = t3 iff old==exp */
+	"	bne	$t2, $t5, 1b\n"	 /* old != expect -> retry */
+	"	addi.d	$t4, $t4, 1\n"	 /* success */
+	"	move	$t2, $t3\n"	 /* expect = old + 1 */
+	"	addi.d	$a1, $a1, -1\n"
+	"	bnez	$a1, 1b\n"
+	"	move	$a0, $t4\n"
+	"	ret\n"
+	".cfi_endproc\n"
+	".size ticket_burst_amcas, .-ticket_burst_amcas\n"
 
-    /* uint64_t ticket_burst_llsc(uint64_t *cell, uint64_t per);
-     *
-     * Identical protocol on LL/SC -- the failsafe control.
-     */
-    ".globl ticket_burst_llsc\n"
-    ".type  ticket_burst_llsc, @function\n"
-    "ticket_burst_llsc:\n"
-    ".cfi_startproc\n"
-    "	li.d	$t2, 0\n"
-    "	li.d	$t4, 0\n"
-    "1:	ll.d	$t2, $a0, 0\n"
-    "	addi.d	$t3, $t2, 1\n"
-    "	sc.d	$t3, $a0, 0\n"
-    "	beqz	$t3, 1b\n" /* sc failed -> retry */
-    "	addi.d	$t4, $t4, 1\n"
-    "	addi.d	$a1, $a1, -1\n"
-    "	bnez	$a1, 1b\n"
-    "	move	$a0, $t4\n"
-    "	ret\n"
-    ".cfi_endproc\n"
-    ".size ticket_burst_llsc, .-ticket_burst_llsc\n"
+	/* uint64_t ticket_burst_amcasdb(uint64_t *cell, uint64_t per);
+	 *
+	 * Identical protocol on AMCAS_DB. Per spec the RMW atomicity is specified for both forms;
+	 * _DB additionally orders surrounding accesses. Discriminates "RMW atomicity broken" from
+	 * "non-DB execution path drops writes".
+	 */
+	".globl ticket_burst_amcasdb\n"
+	".type  ticket_burst_amcasdb, @function\n"
+	"ticket_burst_amcasdb:\n"
+	".cfi_startproc\n"
+	"	li.d	$t2, 0\n"
+	"	li.d	$t4, 0\n"
+	"1:	addi.d	$t3, $t2, 1\n"
+	"	move	$t5, $t2\n"
+	"	amcas_db.d	$t2, $t3, $a0\n"
+	"	bne	$t2, $t5, 1b\n"
+	"	addi.d	$t4, $t4, 1\n"
+	"	move	$t2, $t3\n"
+	"	addi.d	$a1, $a1, -1\n"
+	"	bnez	$a1, 1b\n"
+	"	move	$a0, $t4\n"
+	"	ret\n"
+	".cfi_endproc\n"
+	".size ticket_burst_amcasdb, .-ticket_burst_amcasdb\n"
 
-    /* void bounce_sweep(uint8_t *buf);
-     *
-     * Dirty 512 lines * 8 sweeps with plain scalar byte ld/st.
-     */
-    ".globl bounce_sweep\n"
-    ".type  bounce_sweep, @function\n"
-    "bounce_sweep:\n"
-    ".cfi_startproc\n"
-    "	move	$t5, $a0\n"
-    "	li.d	$t1, 8\n"   /* 8 sweeps */
-    "	li.d	$t6, 512\n" /* 512 lines */
-    "1:	li.d	$t2, 0\n"
-    "2:	slli.d	$t3, $t2, 6\n" /* offset = line * 64 */
-    "	ldx.b	$t4, $t5, $t3\n"
-    "	addi.w	$t4, $t4, 1\n"
-    "	stx.b	$t4, $t5, $t3\n" /* dirty the line */
-    "	addi.d	$t2, $t2, 1\n"
-    "	bltu	$t2, $t6, 2b\n"
-    "	addi.d	$t1, $t1, -1\n"
-    "	bnez	$t1, 1b\n"
-    "	ret\n"
-    ".cfi_endproc\n"
-    ".size bounce_sweep, .-bounce_sweep\n"
+	/* uint64_t ticket_burst_llsc(uint64_t *cell, uint64_t per);
+	 *
+	 * Identical protocol on LL/SC -- the failsafe control.
+	 */
+	".globl ticket_burst_llsc\n"
+	".type  ticket_burst_llsc, @function\n"
+	"ticket_burst_llsc:\n"
+	".cfi_startproc\n"
+	"	li.d	$t2, 0\n"
+	"	li.d	$t4, 0\n"
+	"1:	ll.d	$t2, $a0, 0\n"
+	"	addi.d	$t3, $t2, 1\n"
+	"	sc.d	$t3, $a0, 0\n"
+	"	beqz	$t3, 1b\n" /* sc failed -> retry */
+	"	addi.d	$t4, $t4, 1\n"
+	"	addi.d	$a1, $a1, -1\n"
+	"	bnez	$a1, 1b\n"
+	"	move	$a0, $t4\n"
+	"	ret\n"
+	".cfi_endproc\n"
+	".size ticket_burst_llsc, .-ticket_burst_llsc\n"
 
-    /* void am_hammer_burst(uint64_t *cell, uint64_t iters);
-     * read + write AMCAS pressure for the spinner processes.
-     */
-    ".globl am_hammer_burst\n"
-    ".type  am_hammer_burst, @function\n"
-    "am_hammer_burst:\n"
-    ".cfi_startproc\n"
-    "	li.d	$t2, 0xDEADBE00DEADBE00\n"
-    "	li.d	$t3, 0x1357246813572468\n"
-    "1:	amcas.d	$t2, $t3, $a0\n"	 /* read pressure (compare misses) */
-    "	amswap.d	$t2, $t3, $a0\n" /* write pressure (always swaps) */
-    "	addi.d	$a1, $a1, -1\n"
-    "	bnez	$a1, 1b\n"
-    "	ret\n"
-    ".cfi_endproc\n"
-    ".size am_hammer_burst, .-am_hammer_burst\n");
+	/* void bounce_sweep(uint8_t *buf);
+	 *
+	 * Dirty 512 lines * 8 sweeps with plain scalar byte ld/st.
+	 */
+	".globl bounce_sweep\n"
+	".type  bounce_sweep, @function\n"
+	"bounce_sweep:\n"
+	".cfi_startproc\n"
+	"	move	$t5, $a0\n"
+	"	li.d	$t1, 8\n"   /* 8 sweeps */
+	"	li.d	$t6, 512\n" /* 512 lines */
+	"1:	li.d	$t2, 0\n"
+	"2:	slli.d	$t3, $t2, 6\n" /* offset = line * 64 */
+	"	ldx.b	$t4, $t5, $t3\n"
+	"	addi.w	$t4, $t4, 1\n"
+	"	stx.b	$t4, $t5, $t3\n" /* dirty the line */
+	"	addi.d	$t2, $t2, 1\n"
+	"	bltu	$t2, $t6, 2b\n"
+	"	addi.d	$t1, $t1, -1\n"
+	"	bnez	$t1, 1b\n"
+	"	ret\n"
+	".cfi_endproc\n"
+	".size bounce_sweep, .-bounce_sweep\n"
+
+	/* void am_hammer_burst(uint64_t *cell, uint64_t iters);
+	 * read + write AMCAS pressure for the spinner processes.
+	 */
+	".globl am_hammer_burst\n"
+	".type  am_hammer_burst, @function\n"
+	"am_hammer_burst:\n"
+	".cfi_startproc\n"
+	"	li.d	$t2, 0xDEADBE00DEADBE00\n"
+	"	li.d	$t3, 0x1357246813572468\n"
+	"1:	amcas.d	$t2, $t3, $a0\n"	 /* read pressure (compare misses) */
+	"	amswap.d	$t2, $t3, $a0\n" /* write pressure (always swaps) */
+	"	addi.d	$a1, $a1, -1\n"
+	"	bnez	$a1, 1b\n"
+	"	ret\n"
+	".cfi_endproc\n"
+	".size am_hammer_burst, .-am_hammer_burst\n");
 
 extern uint64_t ticket_burst_amcas(uint64_t *cell, uint64_t per);
+extern uint64_t ticket_burst_amcasdb(uint64_t *cell, uint64_t per);
 extern uint64_t ticket_burst_llsc(uint64_t *cell, uint64_t per);
 extern void bounce_sweep(uint8_t *buf);
 extern void am_hammer_burst(uint64_t *cell, uint64_t iters);
@@ -159,13 +184,13 @@ static void pin(int cpu) {
 
 /* spinner child process body: independent AMCAS user (own address space) */
 static int spinner_main(int id, bool use_amcas) {
-	uint8_t *mem = mmap(NULL, 4096 + BOUNCE_SIZE, PROT_READ | PROT_WRITE,
-			    MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	uint8_t *const mem = mmap(NULL, 4096 + BOUNCE_SIZE, PROT_READ | PROT_WRITE,
+				  MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 	if (mem == MAP_FAILED)
 		return EXIT_FAILURE;
 
-	uint64_t *cell = (uint64_t *)(((uintptr_t)mem + 63) & ~63ULL);
-	uint8_t *buf = mem + 4096;
+	uint64_t *const cell = (uint64_t *)(((uintptr_t)mem + 63) & ~63ULL);
+	uint8_t *const buf = mem + 4096;
 	*cell = 0x1122334455667788ULL;
 	memset(buf, id, BOUNCE_SIZE);
 
@@ -186,9 +211,16 @@ static int spinner_main(int id, bool use_amcas) {
 }
 
 /* ------------------------------------------------------------------ */
+
+enum mech {
+	MECH_AMCAS,
+	MECH_AMCASDB,
+	MECH_LLSC,
+};
+
 struct worker_args {
 	int cpu;
-	bool use_llsc;
+	enum mech mech;
 	uint64_t *cell;
 	uint8_t *bounce;
 	uint64_t bursts, per, result;
@@ -196,12 +228,21 @@ struct worker_args {
 };
 
 static void *worker(void *raw) {
-	struct worker_args *a = raw;
+	struct worker_args *const a = raw;
 	pin(a->cpu);
 	pthread_barrier_wait(a->bar);
 	for (uint64_t r = 0; r < a->bursts; r++) {
-		a->result += a->use_llsc ? ticket_burst_llsc(a->cell, a->per)
-					 : ticket_burst_amcas(a->cell, a->per);
+		switch (a->mech) {
+		case MECH_AMCAS:
+			a->result += ticket_burst_amcas(a->cell, a->per);
+			break;
+		case MECH_AMCASDB:
+			a->result += ticket_burst_amcasdb(a->cell, a->per);
+			break;
+		case MECH_LLSC:
+			a->result += ticket_burst_llsc(a->cell, a->per);
+			break;
+		}
 		bounce_sweep(a->bounce);
 	}
 	return NULL;
@@ -212,18 +253,22 @@ int main(int argc, char **argv) {
 
 	setvbuf(stdout, NULL, _IONBF, 0);
 
-	const char *mech_s = (argc > 1) ? argv[1] : "amcas";
-	int rounds = (argc > 2) ? atoi(argv[2]) : 60;
-	int spinners = (argc > 3) ? atoi(argv[3]) : DEFAULT_N_SPINNERS;
-	bool use_llsc;
+	const char *const mech_s = (argc > 1) ? argv[1] : "amcas";
+	const int rounds = (argc > 2) ? atoi(argv[2]) : 60;
+	const int spinners = (argc > 3) ? atoi(argv[3]) : DEFAULT_N_SPINNERS;
+	enum mech mech;
 	if (strcmp(mech_s, "llsc") == 0)
-		use_llsc = true;
+		mech = MECH_LLSC;
+	else if (strcmp(mech_s, "amcasdb") == 0)
+		mech = MECH_AMCASDB;
 	else if (strcmp(mech_s, "amcas") == 0)
-		use_llsc = false;
+		mech = MECH_AMCAS;
 	else {
-		fprintf(stderr, "error: mech must be amcas or llsc\n");
-		return 1;
+		fprintf(stderr, "error: mech must be amcas, amcasdb or llsc\n");
+		return EXIT_FAILURE;
 	}
+
+	const bool spinner_amcas = (mech != MECH_LLSC);
 
 	printf("mech=%s rounds=%d workers=%d spinners=%d\n", mech_s, rounds, N_WORKERS, spinners);
 
@@ -232,23 +277,24 @@ int main(int argc, char **argv) {
 	for (int i = 0; i < spinners; i++) {
 		pid_t p = fork();
 		if (p == 0)
-			_exit(spinner_main(i, !use_llsc));
+			_exit(spinner_main(i, spinner_amcas));
 		sp[i] = p;
 	}
 
 	uint64_t total_ops = 0, total_lost = 0;
 	int bad_rounds = 0;
-	double t0 = now_sec();
+	const double t0 = now_sec();
 
 	for (int r = 0; r < rounds; r++) {
-		uint8_t *mem = mmap(NULL, (size_t)N_WORKERS * BOUNCE_SIZE + 8192,
-				    PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+		uint8_t *const mem =
+		    mmap(NULL, (size_t)N_WORKERS * BOUNCE_SIZE + 8192, PROT_READ | PROT_WRITE,
+			 MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 		if (mem == MAP_FAILED) {
 			perror("mmap");
 			return EXIT_FAILURE;
 		}
 
-		uint64_t *cell = (uint64_t *)(((uintptr_t)mem + 63) & ~63ULL);
+		uint64_t *const cell = (uint64_t *)(((uintptr_t)mem + 63) & ~63ULL);
 		*cell = 0;
 
 		pthread_t threads[N_WORKERS];
@@ -257,7 +303,7 @@ int main(int argc, char **argv) {
 		pthread_barrier_init(&bar, NULL, N_WORKERS);
 		for (int t = 0; t < N_WORKERS; t++) {
 			workers[t].cpu = t;
-			workers[t].use_llsc = use_llsc;
+			workers[t].mech = mech;
 			workers[t].cell = cell;
 			workers[t].bounce = mem + 8192 + (size_t)t * BOUNCE_SIZE;
 			workers[t].bursts = BURSTS;
@@ -273,8 +319,8 @@ int main(int argc, char **argv) {
 			succ += workers[t].result;
 		}
 
-		uint64_t final = *(volatile uint64_t *)cell;
-		uint64_t ops = (uint64_t)N_WORKERS * BURSTS * PER_BURST;
+		const uint64_t final = *(volatile uint64_t *)cell;
+		const uint64_t ops = (uint64_t)N_WORKERS * BURSTS * PER_BURST;
 		total_ops += ops;
 		if (final != succ) {
 			uint64_t lost = succ - final;
@@ -299,8 +345,21 @@ int main(int argc, char **argv) {
 	       "in %.1fs\n",
 	       rounds, total_ops / 1e6, bad_rounds, (unsigned long)total_lost, now_sec() - t0);
 	if (bad_rounds) {
-		printf("VERDICT: REPRODUCED -- amcas.d lost updates observed "
-		       "(successes counted, writes dropped)\n");
+		const char *mech_str;
+		switch (mech) {
+		case MECH_AMCAS:
+			mech_str = "amcas.d";
+			break;
+		case MECH_AMCASDB:
+			mech_str = "amcas_db.d";
+			break;
+		case MECH_LLSC:
+			mech_str = "ll/sc";
+			break;
+		}
+		printf("VERDICT: REPRODUCED -- %s lost updates observed "
+		       "(successes counted, writes dropped)\n",
+		       mech_str);
 		return EXIT_SUCCESS;
 	}
 	printf("VERDICT: no loss observed in %d rounds (%.0fM ops)\n", rounds, total_ops / 1e6);

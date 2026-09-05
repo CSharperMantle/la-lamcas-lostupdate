@@ -11,14 +11,11 @@ make check-scalar
 ## Run
 
 ```sh
-# ./amcas_lostupdate <amcas|llsc> <rounds> <spinner-processes>
+# ./amcas_lostupdate <amcas|amcasdb|llsc> <rounds> <spinner-processes>
 
-# erratum mode (default)
+./amcas_lostupdate
 ./amcas_lostupdate amcas 60 3
-# LL/SC control -- must stay clean
 ./amcas_lostupdate llsc 60 3
-# no spinner processes
-./amcas_lostupdate amcas 60 0
 ```
 
 Exit 0 = reproduced; exit 2 = no loss observed within the round budget.
