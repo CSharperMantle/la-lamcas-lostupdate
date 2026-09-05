@@ -11,11 +11,11 @@ make check-scalar
 ## Run
 
 ```sh
-# ./amcas_lostupdate <amcas|amcasdb|llsc> <rounds> <spinner-processes>
+# ./amcas_lostupdate [amcas|amcasdb|llsc] [rounds] [spinner-processes]
 
-./amcas_lostupdate
-./amcas_lostupdate amcas 60 3
-./amcas_lostupdate llsc 60 3
+./amcas_lostupdate amcas
+./amcas_lostupdate amcasdb
+./amcas_lostupdate llsc
 ```
 
 Exit 0 = reproduced; exit 2 = no loss observed within the round budget.
