@@ -18,7 +18,7 @@ make check-scalar
 ./amcas_lostupdate llsc
 ```
 
-Exit 0 = reproduced; exit 2 = no loss observed within the round budget.
+Exit 0 = reproduced; exit 1 = no loss observed within the round budget.
 
 ## What it does
 
@@ -33,7 +33,7 @@ else
 	expect = rd	// retry
 ```
 
-Between 64-op bursts each worker dirties a private 128KB buffer (512 lines * 64B * 8 sweeps of scalar byte ld/st), stretching the AMCAS read->write window via constant cache-line transfer.
+Between 64-op bursts each worker dirties a private 32KB buffer (512 lines * 64B * 8 sweeps of scalar byte ld/st), stretching the AMCAS read->write window via constant cache-line transfer.
 
 The architecture requires: `final_cell == sum(successes)`. When the bug hits, `final < sum(successes)`: AMCAS returned `old == expected` (software counts a success) but the write was dropped.
 

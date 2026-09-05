@@ -3,7 +3,7 @@
  *
  * What it does
  * ------------
- * Eight worker threads on CPUs 0..7 run a CAS "ticket" loop on one shared
+ * Multiple worker threads (each bound to one hart) run a CAS "ticket" loop on one shared
  * 64-bit cell:
  *
  *     expect = observed cell value
@@ -13,8 +13,8 @@
  *
  * invariant under the architecture:  final_cell == sum(successes).
  *
- * Between 64-op bursts each worker dirties a private 128KB buffer
- * (512 lines x 64B x 8 sweeps, plain byte ld/st), so the shared cell line
+ * Between 64-op bursts each worker dirties a private 32KB buffer
+ * (512 lines * 64B * 8 sweeps, plain byte ld/st), so the shared cell line
  * is constantly transferred between cores - this stretches the AMCAS
  * read->write window, which is where the silicon drops writes.
  *
@@ -182,7 +182,7 @@ static void pin(int cpu) {
 	pthread_setaffinity_np(pthread_self(), sizeof s, &s);
 }
 
-/* spinner child process body: independent AMCAS user (own address space) */
+// spinner child process body: independent AMCAS user (compute spinner for llsc)
 static int spinner_main(int id, bool use_amcas) {
 	uint8_t *const mem = mmap(NULL, 4096 + BOUNCE_SIZE, PROT_READ | PROT_WRITE,
 				  MAP_SHARED | MAP_ANONYMOUS, -1, 0);
@@ -272,7 +272,7 @@ int main(int argc, char **argv) {
 
 	printf("mech=%s rounds=%d workers=%d spinners=%d\n", mech_s, rounds, N_WORKERS, spinners);
 
-	// spinner processes: independent AMCAS users on the same CPUs
+	// spinner processes: independent AMCAS users (compute spinners for llsc)
 	pid_t sp[16];
 	for (int i = 0; i < spinners; i++) {
 		pid_t p = fork();
