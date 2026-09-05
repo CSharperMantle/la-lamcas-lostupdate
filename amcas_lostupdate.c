@@ -58,7 +58,7 @@ __asm__(".text\n"
 	".type  ticket_burst_amcas, @function\n"
 	"ticket_burst_amcas:\n"
 	".cfi_startproc\n"
-	"	li.d	$t2, 0\n"	 /* expect = 0 (cell starts at 0) */
+	"	ld.d	$t2, $a0, 0\n"	 /* expect = current cell value */
 	"	li.d	$t4, 0\n"	 /* successes */
 	"1:	addi.d	$t3, $t2, 1\n"	 /* new = expect + 1 */
 	"	move	$t5, $t2\n"	 /* save expect */
@@ -83,7 +83,7 @@ __asm__(".text\n"
 	".type  ticket_burst_amcasdb, @function\n"
 	"ticket_burst_amcasdb:\n"
 	".cfi_startproc\n"
-	"	li.d	$t2, 0\n"
+	"	ld.d	$t2, $a0, 0\n"
 	"	li.d	$t4, 0\n"
 	"1:	addi.d	$t3, $t2, 1\n"
 	"	move	$t5, $t2\n"
@@ -106,7 +106,6 @@ __asm__(".text\n"
 	".type  ticket_burst_llsc, @function\n"
 	"ticket_burst_llsc:\n"
 	".cfi_startproc\n"
-	"	li.d	$t2, 0\n"
 	"	li.d	$t4, 0\n"
 	"1:	ll.d	$t2, $a0, 0\n"
 	"	addi.d	$t3, $t2, 1\n"
