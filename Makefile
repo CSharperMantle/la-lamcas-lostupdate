@@ -1,5 +1,5 @@
 CC ?= gcc
-CFLAGS ?= -std=gnu23 -O2 -march=la64v1.1 -mno-lsx -mno-lasx -Wall -Wextra -pthread
+CFLAGS ?= -std=gnu23 -O2 -mno-lsx -mno-lasx -Wall -Wextra -pthread
 
 .PHONY: all
 all: amcas_lostupdate
