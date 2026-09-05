@@ -27,6 +27,7 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
+#include <larchintrin.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdbool.h>
@@ -317,6 +318,8 @@ int main(int argc, char **argv) {
 			pthread_join(threads[t], NULL);
 			succ += workers[t].result;
 		}
+
+		__dbar(0);
 
 		const uint64_t final = *(volatile uint64_t *)cell;
 		const uint64_t ops = (uint64_t)N_WORKERS * BURSTS * PER_BURST;
