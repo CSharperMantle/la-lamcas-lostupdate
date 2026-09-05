@@ -1,0 +1,10 @@
+BasedOnStyle: LLVM
+ColumnLimit: 100
+UseTab: Always
+IndentWidth: 8
+TabWidth: 8
+InsertNewlineAtEOF: true
+AlignConsecutiveShortCaseStatements:
+  Enabled: true
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
