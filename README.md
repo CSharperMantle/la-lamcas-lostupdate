@@ -11,11 +11,12 @@ make check-scalar
 ## Run
 
 ```sh
-# ./amcas_lostupdate [amcas|amcasdb|llsc] [rounds] [spinner-processes]
+# ./amcas_lostupdate [amcas|amcasdb|llsc|amadd] [rounds]
 
-./amcas_lostupdate amcas
-./amcas_lostupdate amcasdb
-./amcas_lostupdate llsc
+./amcas_lostupdate amcas	# erratum mode
+./amcas_lostupdate amcasdb	# control - clean
+./amcas_lostupdate llsc	# control - clean
+./amcas_lostupdate amadd	# control - clean
 ```
 
 Exit 0 = reproduced; exit 1 = no loss observed within the round budget.
@@ -33,8 +34,6 @@ else
 	expect = rd	// retry
 ```
 
-Between 64-op bursts each worker dirties a private 32KB buffer (512 lines * 64B * 8 sweeps of scalar byte ld/st), stretching the AMCAS read->write window via constant cache-line transfer.
+Between 64-op bursts each worker issues 32 plain byte loads (`ld.b`) to a cache line neighboring the cell. The plain-load interleave alone trips the bug; pure stores, same-line or far-line accesses do not.
 
 The architecture requires: `final_cell == sum(successes)`. When the bug hits, `final < sum(successes)`: AMCAS returned `old == expected` (software counts a success) but the write was dropped.
-
-3 spinner child processes (independent AMCAS users on private lines) raise the loss rate; the bug reproduces without them too, just more slowly.

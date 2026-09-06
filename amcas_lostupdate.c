@@ -1,26 +1,16 @@
-/* amcas_lostupdate.c - miniature self-contained reproducer for the
- * Loongson LA664 (3B6000) AMCAS lost-update erratum.
+/* Minimal reproducer for the Loongson LA664 (3B6000) AMCAS lost-update erratum.
  *
- * What it does
- * ------------
- * Multiple worker threads (each bound to one hart) a CAS "ticket" loop on one shared 64-bit cell:
+ * Workers run a CAS "ticket" loop on one shared cell:
  *
- *     expect = observed cell value
- *     rd = amcas.d(cell, expect, expect+1)   // write expect+1 iff ==expect
- *     if (rd == expect) successes++          // swap reported success
- *     else expect = rd                       // retry with the new old value
+ *     expect = current cell value
+ *     rd = amcas.d(cell, expect, expect + 1) // write expect+1 iff ==expect
+ *     if (rd == expect) successes++; else expect = rd;
  *
- * invariant under the architecture:  final_cell == sum(successes).
+ * Invariant under the architecture:  final_cell == sum(successes).
  *
- * Between 64-op bursts each worker dirties a private 128KB buffer
- * (512 lines x 64B x 8 sweeps, plain byte ld/st), so the shared cell line
- * is constantly transferred between cores - this stretches the AMCAS
- * read->write window, which is where the silicon drops writes.
- *
- * To reproduce *reliably*, the reproducer forks `spinners` child processes
- * (default 3) that hammer AMCAS ops on their own private lines, mimicking
- * independent AMCAS user processes (the condition under which the erratum
- * was first observed; quiet-machine runs only rarely lose updates).
+ * Between 64-op bursts, each worker issues plain byte loads to a cache line neighboring the cell.
+ * That interleave alone breaks amcas.d's RMW: counted successes whose writes never commit.
+ * amcas_db.d, amadd.d and ll/sc stay exact under the same schedule.
  */
 
 #define _GNU_SOURCE
@@ -45,11 +35,12 @@
 #define N_WORKERS 3
 #define CACHE_LINE_SZ 64
 #define BOUNCE_SIZE (CACHE_LINE_SZ * 1)
+#define BOUNCE_BURSTS 32
 
-/* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------- */
 /* C workers -- only the atomic ops (amcas/amcas_db/amswap/ll/sc) stay */
-/* as inline asm, embedded directly inside each routine               */
-/* ------------------------------------------------------------------ */
+/* as inline asm, embedded directly inside each routine                */
+/* ------------------------------------------------------------------- */
 
 // CAS fetch-and-increment; returns the number of successful swaps.
 static uint64_t ticket_burst_amcas(atomic_ulong *cell, uint64_t per) {
@@ -137,13 +128,13 @@ static uint64_t ticket_burst_amadd(atomic_ulong *cell, uint64_t per) {
 	return successes;
 }
 
-// Dirty 512 lines * 8 sweeps with plain scalar byte ld/st.
 static void bounce_sweep(uint8_t *buf) {
-	volatile uint8_t *const b = buf;
+	__attribute__((unused)) uint64_t sink;
 
-	for (int sweep = 0; sweep < 8; sweep++)				   /* 8 sweeps */
-		for (int pos = 0; pos < BOUNCE_SIZE; pos += CACHE_LINE_SZ) /* 512 lines */
-			b[pos]++;					   /* dirty the line */
+	volatile uint8_t *const buf_vola = buf;
+
+	for (int i = 0; i < BOUNCE_BURSTS; i++)
+		sink += buf_vola[0];
 }
 
 /* ------------------------------------------------------------------ */
@@ -226,7 +217,7 @@ int main(int argc, char **argv) {
 	else if (strcmp(mech_s, "amadd") == 0)
 		mech = MECH_AMADD;
 	else {
-		fprintf(stderr, "error: mech must be amcas, amcasdb or llsc\n");
+		fprintf(stderr, "error: mech must be amcas, amcasdb, llsc or amadd\n");
 		return EXIT_FAILURE;
 	}
 
