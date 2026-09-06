@@ -14,9 +14,9 @@ make check-scalar
 # ./amcas_lostupdate [amcas|amcasdb|llsc|amadd] [rounds]
 
 ./amcas_lostupdate amcas	# erratum mode
+./amcas_lostupdate amadd	# erratum mode
 ./amcas_lostupdate amcasdb	# control - clean
 ./amcas_lostupdate llsc	# control - clean
-./amcas_lostupdate amadd	# control - clean
 ```
 
 Exit 0 = reproduced; exit 1 = no loss observed within the round budget.
